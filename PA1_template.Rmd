@@ -1,25 +1,136 @@
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
+Reproducible Research : Peer Reviewed Assignment 1
+==================================================
+
+###Loading and preprocessing the data
+1) Load the data
+```{r,echo=FALSE}
+library(data.table)
+library(ggplot2)
+if (!file.exists("activity.csv"))
+{
+        stop("activity.csv doesn't exist in working directory") 
+}
+```
+```{r,echo=TRUE}
+activity <- fread(file="activity.csv",sep = ",",na.strings = "NA",stringsAsFactors = FALSE,header=TRUE)
+```
+```{r,echo=FALSE}
+activity$date <- as.Date(activity$date,format = "%Y-%m-%d")
+```
+
+2) In activity data frame, change 'date` column from character type to Date type
+```{r,echo=TRUE}
+activity$date <- as.Date(activity$date,format = "%Y-%m-%d")
+```
+
+###What is mean total number of steps taken per day?
+
+1) Histogram of Total number of steps taken each day
+```{r,echo=FALSE}
+totalSteps_day <- data.table(aggregate(activity$steps,by=list(activity$date),FUN=sum))
+```
+
+```{r,echo=TRUE}
+hist(totalSteps_day[!is.na(totalSteps_day$x),]$x, xlab="Total Steps taken per day", main="Histogram of Total Number of Steps taken per day", breaks=55)
+abline(v=mean(totalSteps_day$x,na.rm = TRUE),col="green",lwd=2)
+abline(v=median(totalSteps_day$x,na.rm = TRUE),col="blue",lwd=2)
+```
+
+2) Mean and Median of total number of steps taken
+```{r, echo=FALSE}
+mn <- mean(totalSteps_day$x,na.rm = TRUE)
+mdn <-median(totalSteps_day$x,na.rm = TRUE)
+```
+        Mean   : `r as.integer(mn)`
+        Median : `r mdn`
+
+###What is the average daily activity pattern?
+
+1) Time series plot 5 minute Interval Vs average number of steps taken averaged across all days
+
+```{r,echo=FALSE}
+activity_wtNA <- activity[activity[,!is.na(activity$steps)],]
+avg_steps_interval <- data.table(aggregate(activity_wtNA$steps,by=list(activity_wtNA$interval),FUN=mean))
+names(avg_steps_interval) <- c("Interval","AvgSteps")
+```
+```{r,echo=TRUE}
+with(avg_steps_interval,plot(Interval,AvgSteps,typ="l",xlab="Interval", ylab="Average number of steps", col="blue", main="Time Interval Vs Average number of steps taken, averaged for all days"))
+peak_avg <- avg_steps_interval[which(avg_steps_interval$AvgSteps==max(avg_steps_interval$AvgSteps)),]$Interval
+abline(v=peak_avg,lwd=2,col="green")
+```
+
+2) The 5 min interval, on average across all the days in the dataset, contains maximum number of steps 
+
+        Interval where average number of steps maximum  :  `r peak_avg`
+        Average Max number of steps taken               :  `r max(avg_steps_interval$AvgSteps)`
+
+###Imputing missing values
+1) Total number of missing values (NA's) in the dataset
+```{r,echo=FALSE}
+missingVal <- nrow(activity_NA <- activity[activity[,is.na(activity$steps)],])
+```
+        Total number of rows having missing values : `r missingVal`
 
 
-## Loading and preprocessing the data
+```{r,echo=FALSE}
+avg_steps_day <- data.table(aggregate(activity$steps,by=list(activity$date),FUN=mean))
+names(avg_steps_day) <- c("date","avgsteps")
+
+#fill median values in NA in avg_steps_day
+avg_steps_day[is.na(avg_steps_day$avgsteps),]$avgsteps <- median(avg_steps_day$avgsteps,na.rm=TRUE)
+
+activity_imputing <- data.table(activity)
+
+#activity_imputing[is.na(steps),]$steps <-  as.integer(avg_steps_day[activity_imputing[is.na(activity_imputing$steps),], on="date"]$avgsteps)
+
+#fill NAs for respective days based on NAs in the activity_imputing dataset 
+activity_imputing[is.na(steps),]$steps <-  as.integer(avg_steps_day[activity_imputing[is.na(steps),], on="date"]$avgsteps)
+
+#histogram after imputing the NAs with median details
+total_steps_day <- data.table(aggregate(activity_imputing$steps,by=list(activity_imputing$date),FUN="sum"))
+names(total_steps_day) <- c("date","avgSteps")
+```
+2) Histogram of total number of steps taken
+
+        Missing values are filled with median of average number of steps taken each day - `r as.integer(median(avg_steps_day$avgsteps,na.rm=TRUE))`)
+        
+```{r,echo=TRUE}
+hist(total_steps_day$avgSteps,xlab="Total Number of Steps taken per day", main="Histogram of Total Number of Steps taken per day",breaks=61)
+abline(v=mean(total_steps_day$avgSteps),col="green",lwd=2)
+abline(v=median(total_steps_day$avgSteps),col="blue",lwd=2)
+```
+
+3) Mean and Median of total number of steps taken
+```{r, echo=FALSE}
+mn1 <- mean(total_steps_day$avgSteps)
+mdn1 <-median(total_steps_day$avgSteps)
+```
+        Mean   : `r as.integer(mn1)`
+        Median : `r mdn1` 
+
+The Mean and Median values after imputing are slightly lower than previous computation of omitting the missing values. The impact to original dataset is low.
+
+###Are there differences in activity patterns between weekdays and weekends?
+```{r,echo=FALSE}
+activity_imputing$dayOfWeek <- weekdays(activity_imputing$date)
+activity_imputing[(dayOfWeek=="Sunday" | dayOfWeek=="Saturday"),]$dayOfWeek<-"Weekend"
+activity_imputing[dayOfWeek!="Weekend",]$dayOfWeek<-"Weekday"
+imput_avg_interval <- data.table(aggregate(activity_imputing$steps,by=list(activity_imputing$dayOfWeek,activity_imputing$interval),FUN="mean"))
+names(imput_avg_interval) <- c("DayType","Interval","avgSteps")
+imput_avg_interval <- transform(imput_avg_interval,DayType=factor(DayType,levels=c("Weekday","Weekend"),labels = c("Weekday","Weekend")))
+```
+
+1) Plot to show the difference in activity between Weekday and Weekend
+        
+        There seems to be higher level of activity during Weekend than Weekday
+        
+```{r,echo=TRUE,fig.width=8}
+library(ggplot2)
+ggplot(imput_avg_interval,aes(Interval,avgSteps))+geom_line(aes(col=DayType))+facet_wrap(~DayType, ncol=1)+labs(x="Interval",y="Average Number of steps", title="Interval Vs Average Number of steps in an interval, averaged by weekend and weekday")+geom_smooth(method = "lm",aes(col=DayType),se=FALSE)
+```
 
 
 
-## What is mean total number of steps taken per day?
 
 
 
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
